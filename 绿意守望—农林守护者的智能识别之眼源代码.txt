@@ -1,0 +1,318 @@
+In [1]
+ls
+4644178.ipynb  data/  resnet18_.pdparams  work/
+In [2]
+import os
+import cv2
+from tqdm import tqdm
+import numpy as np
+from  matplotlib import pyplot as plt
+from paddle.nn.functional import one_hot
+import paddle
+
+path = './work/Plant_leave_diseases_dataset_with_augmentation/'
+files= os.listdir(path) #得到文件夹下的所有文件名称
+class_dir = {}
+load_test_x = []
+load_train_x = []
+load_test_y = []
+load_train_y = []
+
+# 数据集构建
+for id_,file in enumerate(tqdm(files[:5])): #遍历文件夹
+    if os.path.isdir(path+file):
+        dir_class = file
+        piclist = os.listdir(path+dir_class) 
+#         piclist = piclist[:10]
+#         print(piclist)
+        pic_num = len(piclist)
+        train_pic = piclist[:pic_num//10*8]
+        test_pic = piclist[pic_num//10*8:pic_num//10*10]
+#         print(test_pic,train_pic)
+#         print(len(piclist),len(test_pic),len(train_pic))
+        
+        class_dir[id_] = file
+        for pic_test in test_pic:
+            IMG_PATH = path+dir_class+"/"+pic_test
+            
+            im = cv2.imread(IMG_PATH,1)	# load image as bgr
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            im = cv2.resize(im, (256,256))
+#             print(im.dtype)
+            load_test_x.append(im)
+            load_test_y.append(id_)
+        for pic_train in train_pic:
+            IMG_PATH = path+dir_class+"/"+pic_train
+            im = cv2.imread(IMG_PATH,1)	# load image as bgr
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            im = cv2.resize(im, (256,256))
+            load_train_x.append(im)
+            load_train_y.append(id_)
+#             print(im.shape)
+#         break
+# print(class_dir)
+#     if os.path.isdir(file): #判断是否是文件夹，不是文件夹才打开
+load_test_x = np.array(load_test_x)
+# load_test_y = paddle.to_tensor(load_test_y, dtype='int64')
+# print(load_test_y)
+# load_test_y = one_hot(load_test_y, num_classes=40)
+# 解码np.argmax(y_train,axis=1)
+load_train_x = np.array(load_train_x)
+# load_train_y = paddle.to_tensor(load_train_y, dtype='int64')
+# load_train_y = one_hot(load_train_y, num_classes=40)
+100%|██████████| 5/5 [00:16<00:00,  4.09s/it]
+In [3]
+# load_test_y = paddle.to_tensor(load_test_y, dtype='int64')
+# load_test_y = one_hot(load_test_y, num_classes=5)
+
+# load_train_y = paddle.to_tensor(load_train_y, dtype='int64')
+# load_train_y = one_hot(load_train_y, num_classes=5)
+In [4]
+# pp修改
+import paddle
+import paddle.nn as nn
+from paddle.io import Dataset,DataLoader
+import paddle.vision.transforms as transforms
+import paddle.optimizer as optim
+from paddle.vision.transforms import *
+In [ ]
+# import numpy as np
+
+# from paddle.vision.transforms import functional as F
+
+# fake_img = (np.random.rand(256, 300, 3) * 255.).astype('uint8')
+
+# fake_img = Image.fromarray(fake_img)
+# print(fake_img)
+means = [0, 0, 0]
+stdevs = [0, 0, 0]
+
+
+num_imgs = len(load_train_x)
+for data in load_train_x:
+    img = data
+    for i in range(3):
+        # 一个通道的均值和标准差
+        means[i] += img[:, :, i].mean()
+        stdevs[i] += img[:, :, i].std()
+
+
+means = np.asarray(means) / num_imgs
+stdevs = np.asarray(stdevs) / num_imgs
+
+print(" mean = {}".format(means))
+print("std = {}".format(stdevs))
+        
+In [ ]
+# 数据扩增方法
+train_datagen = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize(mean = means,std = stdevs)
+])
+
+
+
+#测试集不需要数据增强，但是需要进行归一化
+test_datagen = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean = means,std = stdevs )
+])
+
+In [ ]
+# 自定义读取数据集
+from PIL import Image
+class ImageSet(Dataset):
+    def __init__(
+            self,
+            images,
+            labels,
+            transform):
+        self.transform = transform
+        self.images = images
+        self.labels = labels
+
+    def __getitem__(self, item):
+        image = self.images[item]
+        # print(image)
+        # print(image.shape)
+        # 防止文件出错，这里生成一个随机的照片
+        try:
+            # image = image.convert('RGB')
+            # print('ok')
+            pass
+        except:
+            image = Image.fromarray(np.zeros((256, 256), dtype=np.int8))
+            image = image.convert('RGB')
+
+        image = self.transform(image)
+        return image, paddle.to_tensor(self.labels[item])
+
+    def __len__(self):
+        return len(self.images)
+In [ ]
+# [ [str(x)]  for  x in  load_train_y]
+In [ ]
+import pandas as pd
+import codecs
+
+
+train_dataset = ImageSet(load_train_x,
+                         load_train_y,
+                         train_datagen)
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=32,
+    shuffle=True,
+    # num_workers=1,
+    use_buffer_reader =True,
+)
+In [ ]
+import pandas as pd
+import codecs
+
+
+test_dataset = ImageSet(load_test_x,
+                         load_test_y,
+                         test_datagen)
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=32,
+    shuffle=True,
+    # num_workers=1,
+    use_buffer_reader =True,
+)
+In [ ]
+for data in train_loader:
+    break
+In [ ]
+model = paddle.vision.models.resnet18(pretrained=True)
+model.fc = nn.Linear(512,5)
+# model = model.cuda() #使用GPU
+# print(model.parameters())
+
+# 模型优化器
+
+optimizer = optim.SGD(learning_rate=0.001, parameters=model.parameters(),)
+
+
+# 模型损失函数
+loss = nn.CrossEntropyLoss()
+
+metrics=paddle.metric.Accuracy()
+In [ ]
+# 设置迭代轮数epochs，可调整，轮数越多，所花时间越久
+import time
+epochs = 5
+for epoch in range(epochs):
+    start_t = time.time()
+    epoch_l = 0
+    epoch_t = 0
+    
+    # 批量训练
+    for batch_idx, batch in enumerate(train_loader):
+        optimizer.clear_grad()
+        image, label = batch
+        image, label = image.cuda(), label.cuda()
+        output = model(image) # 正向传播
+        label =  paddle.to_tensor(label, dtype='int32')
+        # print(output,'\n',label)
+        l = loss(output, label) # 计算损失
+        correct = metrics.compute(output, label)
+        metrics.update(correct)
+        res = metrics.accumulate()
+        
+        l.backward()
+        optimizer.step()
+
+        batch_l = l.item()
+        epoch_l += batch_l
+        batch_t = time.time() - start_t
+        epoch_t += batch_t
+        start_t = time.time()
+        
+        # 打印loss
+        if batch_idx % 10 == 0:
+            print(l.item(), batch_idx, len(train_loader),res)
+            
+    epoch_t = epoch_t / len(train_loader)
+    epoch_l = epoch_l / len(train_loader)
+    print('...epoch: {:3d}/{:3d}, loss: {:.4f}, average time: {:.2f}.'.format(
+        epoch + 1, epochs, epoch_l, epoch_t))
+In [ ]
+import pandas as pd
+import codecs
+
+import random
+# 数据集打乱
+seed=2022
+random.seed(seed)
+random.shuffle(load_test_x)
+random.seed(seed)#一定得重复在写一遍,和上面的seed要相同,不然y_batch和x_batch打乱顺序会不一样
+random.shuffle(load_test_y)
+
+test_dataset = ImageSet(load_test_x[:20],
+                         load_test_y[:20],
+                         test_datagen)
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=1,
+    # shuffle=True,
+    # num_workers=1,
+    use_buffer_reader =True,
+)
+
+
+for id_,batch in enumerate(test_loader):
+    image,label = batch
+    # image = ToPILImage()(image[0])
+    # image = toPIL(image)
+    # print(image)
+    plt.imshow(load_test_x[id_], cmap='gray')
+    plt.show()
+    
+    print('预测类：')
+    print(model(image))
+    print(np.argmax(model(image)))
+    print(class_dir[np.argmax(model(image))])
+    
+    print('实际类：')
+    print(label)
+    print(class_dir[label.tolist()[0][0]])
+
+    print(load_test_y[id_])
+    # break
+In [ ]
+paddle.save(model.state_dict(), "./work/resnet18_.pdparams")
+In [ ]
+from tqdm import tqdm
+
+model.eval()
+
+to_prob = nn.Softmax()
+with paddle.no_grad():
+    imagenames, probs = list(), list()
+    # print(test_loader)
+    # print(len(test_loader))
+    res = 0
+    l = ''
+    for batch_idx, batch in enumerate(tqdm(test_loader)):
+        # print(batch_idx)
+        image, label = batch
+        image, label = image.cuda(), label.cuda()
+        pred = model(image)
+        # print(pred,)
+        label =  paddle.to_tensor(label, dtype='int32')
+        l = loss(pred, label) # 计算损失
+        correct = metrics.compute(pred, label)
+        metrics.update(correct)
+        res = metrics.accumulate()
+        # print(batch_idx)
+        if batch_idx % 10 == 0:
+            print(l.item(), batch_idx, len(test_loader),res)
+    print(l.item(), len(test_loader),res)
+In [ ]
+model_state_dict = paddle.load('./work/resnet18_.pdparams')
+model.load_dict(model_state_dict)
